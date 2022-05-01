@@ -1,6 +1,7 @@
 package cpw.mods.forge.serverpacklocator.server;
 
 import cpw.mods.forge.serverpacklocator.ServerManifest;
+import cpw.mods.forge.serverpacklocator.ServerManifest.OverrideFile;
 import cpw.mods.modlauncher.api.LamdbaExceptionUtils;
 import net.minecraftforge.forgespi.language.IModFileInfo;
 import net.minecraftforge.forgespi.language.IModInfo;
@@ -9,15 +10,23 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.nio.file.*;
-import java.util.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class ServerFileManager {
+
     private static final Logger LOGGER = LogManager.getLogger();
     private static Map<IModFile, IModFileInfo> infos;
     private ServerManifest manifest;
@@ -30,7 +39,8 @@ public class ServerFileManager {
         manifestFile = modsDir.resolve("servermanifest.json");
     }
 
-    private static String getForgeVersion() throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException {
+    private static String getForgeVersion()
+        throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException {
         Class fmlloader = Class.forName("net.minecraftforge.fml.loading.FMLLoader");
         Field forge = fmlloader.getDeclaredField("forgeVersion");
         forge.setAccessible(true);
@@ -45,7 +55,12 @@ public class ServerFileManager {
 
     byte[] findFile(final String fileName) {
         try {
-            return Files.readAllBytes(modsDir.resolve(fileName));
+            // Check for a mod
+            Path modPath = modsDir.resolve(fileName);
+            if (!modPath.toFile().exists()) {
+                modPath = modsDir.resolve("overrides/" + fileName);
+            }
+            return Files.readAllBytes(modPath);
         } catch (IOException e) {
             LOGGER.warn("Failed to read file {}", fileName);
             return null;
@@ -54,16 +69,23 @@ public class ServerFileManager {
 
     private static Field modInfoParser;
     private static Method modFileParser;
+
     public static List<IModInfo> getModInfos(final IModFile modFile) {
         if (modInfoParser == null) {
-            Class<?> mfClass = LamdbaExceptionUtils.uncheck(() -> Class.forName("net.minecraftforge.fml.loading.moddiscovery.ModFile"));
+            Class<?> mfClass = LamdbaExceptionUtils.uncheck(
+                () -> Class.forName("net.minecraftforge.fml.loading.moddiscovery.ModFile"));
             modInfoParser = LamdbaExceptionUtils.uncheck(() -> mfClass.getDeclaredField("parser"));
             modInfoParser.setAccessible(true);
-            Class<?> mfpClass = LamdbaExceptionUtils.uncheck(() -> Class.forName("net.minecraftforge.fml.loading.moddiscovery.ModFileParser"));
-            modFileParser = Arrays.stream(mfpClass.getMethods()).filter(m -> m.getName().equals("readModList")).findAny().orElseThrow(() -> new RuntimeException("BARFY!"));
+            Class<?> mfpClass = LamdbaExceptionUtils.uncheck(
+                () -> Class.forName("net.minecraftforge.fml.loading.moddiscovery.ModFileParser"));
+            modFileParser = Arrays.stream(mfpClass.getMethods())
+                .filter(m -> m.getName().equals("readModList")).findAny()
+                .orElseThrow(() -> new RuntimeException("BARFY!"));
             infos = new HashMap<>();
         }
-        IModFileInfo info = infos.computeIfAbsent(modFile, LamdbaExceptionUtils.rethrowFunction(junk->(IModFileInfo)modFileParser.invoke(null, modFile, modInfoParser.get(modFile))));
+        IModFileInfo info = infos.computeIfAbsent(modFile, LamdbaExceptionUtils.rethrowFunction(
+            junk -> (IModFileInfo) modFileParser.invoke(null, modFile,
+                modInfoParser.get(modFile))));
         return info.getMods();
     }
 
@@ -93,43 +115,68 @@ public class ServerFileManager {
     private void generateManifest(final List<IModFile> modList) {
         LOGGER.debug("Generating manifest");
         final Map<String, List<IModFile>> filesbyfirstId = modList.stream()
-                .filter(mf -> mf.getType() == IModFile.Type.MOD)
-                .filter(mf -> !"serverpackutility.jar".equals(mf.getFileName()))
-                .collect(Collectors.groupingBy(mf -> getModInfos(mf).get(0).getModId()));
+            .filter(mf -> mf.getType() == IModFile.Type.MOD)
+            .filter(mf -> !"serverpackutility.jar".equals(mf.getFileName()))
+            .collect(Collectors.groupingBy(mf -> getModInfos(mf).get(0).getModId()));
         final List<IModFile> nonModFiles = modList.stream()
-                .filter(mf -> mf.getType() != IModFile.Type.MOD)
-                .collect(Collectors.toList());
+            .filter(mf -> mf.getType() != IModFile.Type.MOD)
+            .collect(Collectors.toList());
 
         final ServerManifest manifest = new ServerManifest();
         final List<ServerManifest.ModFileData> nonModFileData = nonModFiles
-                .stream()
-                .map(ServerManifest.ModFileData::new)
-                .collect(Collectors.toList());
+            .stream()
+            .map(ServerManifest.ModFileData::new)
+            .collect(Collectors.toList());
         manifest.addAll(nonModFileData);
         final List<ServerManifest.ModFileData> modFileDataList = filesbyfirstId.entrySet().stream()
-                .map(this::selectNewest)
-                .map(ServerManifest.ModFileData::new)
-                .collect(Collectors.toList());
+            .map(this::selectNewest)
+            .map(ServerManifest.ModFileData::new)
+            .collect(Collectors.toList());
         manifest.addAll(modFileDataList);
         manifest.setForgeVersion(LamdbaExceptionUtils.uncheck(ServerFileManager::getForgeVersion));
+
+        // Add overrides
+        manifest.addOverride(getOverrides());
+
         this.manifest = manifest;
         this.manifest.save(this.manifestFile);
         this.modList = Stream.concat(nonModFileData.stream(), modFileDataList.stream())
-                .map(ServerManifest.ModFileData::getModFile)
-                .collect(Collectors.toList());
+            .map(ServerManifest.ModFileData::getModFile)
+            .collect(Collectors.toList());
     }
 
     private IModFile selectNewest(final Map.Entry<String, List<IModFile>> modListEntry) {
         List<IModFile> modFiles = modListEntry.getValue();
         if (modFiles.size() > 1) {
-            LOGGER.debug("Selecting newest by artifact version for modid {}", modListEntry.getKey());
-            modFiles.sort(Comparator.<IModFile, ArtifactVersion>comparing(mf -> getModInfos(mf).get(0).getVersion()).reversed());
-            LOGGER.debug("Newest file by artifact version for modid {} is {} ({})", modListEntry.getKey(), modFiles.get(0).getFileName(), getModInfos(modFiles.get(0)).get(0).getVersion());
+            LOGGER.debug("Selecting newest by artifact version for modid {}",
+                modListEntry.getKey());
+            modFiles.sort(Comparator.<IModFile, ArtifactVersion>comparing(
+                mf -> getModInfos(mf).get(0).getVersion()).reversed());
+            LOGGER.debug("Newest file by artifact version for modid {} is {} ({})",
+                modListEntry.getKey(), modFiles.get(0).getFileName(),
+                getModInfos(modFiles.get(0)).get(0).getVersion());
         }
         return modFiles.get(0);
     }
 
     List<IModFile> getModList() {
         return this.modList;
+    }
+
+    private List<OverrideFile> getOverrides() {
+        File overrideDir = modsDir.resolve("overrides").toFile();
+        String prefix = overrideDir.getAbsolutePath();
+        try {
+            return Files.walk(overrideDir.toPath()).filter(p -> p.toFile().isFile())
+                .map(path -> {
+                    String relative = path.toFile().getAbsolutePath().replace(prefix, "")
+                        .substring(1);
+                    return new OverrideFile(path.toFile(), relative);
+                })
+                .collect(Collectors.toList());
+        } catch (IOException e) {
+            LOGGER.error("Could not walk overrides directory", e);
+            return Collections.emptyList();
+        }
     }
 }

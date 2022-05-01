@@ -6,12 +6,10 @@ import cpw.mods.modlauncher.api.IEnvironment;
 import cpw.mods.modlauncher.api.TypesafeMap;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.forgespi.locating.IModDirectoryLocatorFactory;
-import net.minecraftforge.forgespi.locating.IModLocator;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
@@ -27,7 +25,7 @@ public class LaunchEnvironmentHandler {
         return environment.flatMap(e -> e.getProperty(key.get()));
     }
 
-    Path getGameDir() {
+    public Path getGameDir() {
         return getValue(IEnvironment.Keys.GAMEDIR).orElseGet(()-> Paths.get("."));
     }
 
