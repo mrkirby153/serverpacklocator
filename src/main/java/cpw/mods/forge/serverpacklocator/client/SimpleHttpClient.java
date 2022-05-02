@@ -3,6 +3,7 @@ package cpw.mods.forge.serverpacklocator.client;
 import cpw.mods.forge.serverpacklocator.FileChecksumValidator;
 import cpw.mods.forge.serverpacklocator.LaunchEnvironmentHandler;
 import cpw.mods.forge.serverpacklocator.ServerManifest;
+import cpw.mods.forge.serverpacklocator.ServerManifest.ModFileData;
 import cpw.mods.modlauncher.api.LamdbaExceptionUtils;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -77,7 +78,8 @@ public class SimpleHttpClient {
         Pattern.compile("(default)?config/.*-client.toml"),
     };
 
-    private final Path outputDir;
+    private final Path commonOutputDir;
+    private final Path clientOutputDir;
     private ServerManifest serverManifest;
     private Iterator<ServerManifest.ModFileData> fileDownloaderIterator;
 
@@ -118,7 +120,8 @@ public class SimpleHttpClient {
             LOGGER.error("Could not load ignored paths, this will sync everything", e);
         }
 
-        this.outputDir = packHandler.getServerModsDir();
+        this.commonOutputDir = packHandler.getServerModsDir();
+        this.clientOutputDir = packHandler.getClientModsDir();
         final Optional<String> remoteServer = packHandler.getConfig()
             .getOptional("client.remoteServer");
         clientCertificateManager = packHandler.getCertificateManager();
@@ -219,7 +222,7 @@ public class SimpleHttpClient {
 
     private void requestFile(final ServerManifest.ModFileData next) {
         final String existingChecksum = FileChecksumValidator.computeChecksumFor(
-            outputDir.resolve(next.getFileName()));
+            commonOutputDir.resolve(next.getFileName()));
         if (Objects.equals(next.getChecksum(), existingChecksum)) {
             LOGGER.debug("Found existing file {} - skipping", next.getFileName());
             requestNextFile();
@@ -240,6 +243,7 @@ public class SimpleHttpClient {
         final DefaultFullHttpRequest fileHttpRequest = new DefaultFullHttpRequest(
             HttpVersion.HTTP_1_1, HttpMethod.GET, requestUri);
         fileHttpRequest.headers().set(HttpHeaderNames.ACCEPT, "application/octet-stream");
+        fileHttpRequest.headers().set("X-Mod-Type", next.isClient() ? "client" : "common");
         final ChannelFuture channelFuture = channel.writeAndFlush(fileHttpRequest);
         channelFuture.awaitUninterruptibly();
         if (!channelFuture.isSuccess()) {
@@ -254,9 +258,9 @@ public class SimpleHttpClient {
         boolean checksumMatches = Objects.equals(next.getChecksum(), existingChecksum);
         boolean fileExists = resolvedPath.toFile().exists();
 
-        if(fileExists) {
-            if(!checksumMatches) {
-                if(shouldIgnore(next.getPath())) {
+        if (fileExists) {
+            if (!checksumMatches) {
+                if (shouldIgnore(next.getPath())) {
                     LOGGER.info("Skipping override for {} as it is ignored", next.getPath());
                     requestNextOverride();
                     return;
@@ -293,8 +297,11 @@ public class SimpleHttpClient {
                 msg.content().readableBytes(), modFileData.getFileName());
             LaunchEnvironmentHandler.INSTANCE.addProgressMessage(
                 "Receiving file " + modFileData.getFileName());
+
+            Path outputFolder = modFileData.isClient()? clientOutputDir : commonOutputDir;
+
             try (OutputStream os = Files.newOutputStream(
-                outputDir.resolve(modFileData.getFileName()))) {
+                outputFolder.resolve(modFileData.getFileName()))) {
                 msg.content().readBytes(os, msg.content().readableBytes());
             } catch (IOException e) {
                 e.printStackTrace();
@@ -353,7 +360,10 @@ public class SimpleHttpClient {
     }
 
     private void buildFileFetcher() {
-        fileDownloaderIterator = serverManifest.getFiles().iterator();
+        List<ModFileData> mfd = new ArrayList<>();
+        mfd.addAll(serverManifest.getFiles());
+        mfd.addAll(serverManifest.getClientFiles());
+        fileDownloaderIterator = mfd.iterator();
         overrideFileIterator = serverManifest.getOverrides().iterator();
     }
 

@@ -104,6 +104,8 @@ public class ServerManifest {
         private String rootModId;
         private String checksum;
         private String fileName;
+
+        private boolean client = false;
         private transient IModFile modFile;
 
         public ModFileData() {
@@ -136,6 +138,14 @@ public class ServerManifest {
 
         public IModFile getModFile() {
             return modFile;
+        }
+
+        public boolean isClient() {
+            return client;
+        }
+
+        public void setClient(boolean client) {
+            this.client = client;
         }
     }
 

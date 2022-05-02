@@ -23,8 +23,8 @@ public class ClientSidedPackHandler extends SidedPackHandler {
     private ClientCertificateManager certManager;
     private SimpleHttpClient clientDownloader;
 
-    public ClientSidedPackHandler(final Path serverModsDir) {
-        super(serverModsDir);
+    public ClientSidedPackHandler(final Path serverModsDir, final Path clientModsDir) {
+        super(serverModsDir, clientModsDir);
     }
 
     @Override

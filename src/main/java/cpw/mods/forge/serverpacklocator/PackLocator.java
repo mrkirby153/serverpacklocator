@@ -36,7 +36,7 @@ public class PackLocator implements IModLocator {
         final Path gameDir = LaunchEnvironmentHandler.INSTANCE.getGameDir();
         serverModsPath = DirHandler.createOrGetDirectory(gameDir, "servermods");
         clientModsPath = DirHandler.createOrGetDirectory(gameDir, "clientmods");
-        serverPackLocator = SidedPackLocator.buildFor(LaunchEnvironmentHandler.INSTANCE.getDist(), serverModsPath);
+        serverPackLocator = SidedPackLocator.buildFor(LaunchEnvironmentHandler.INSTANCE.getDist(), serverModsPath, clientModsPath);
         if (!serverPackLocator.isValid()) {
             LOGGER.warn("The server pack locator is not in a valid state, it will not load any mods");
         }

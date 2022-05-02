@@ -22,8 +22,8 @@ public class ServerSidedPackHandler extends SidedPackHandler {
     private ServerFileManager serverFileManager;
     private WhitelistValidator whitelistMonitor;
 
-    public ServerSidedPackHandler(final Path serverModsDir) {
-        super(serverModsDir);
+    public ServerSidedPackHandler(final Path serverModsDir, final Path clientModsDir) {
+        super(serverModsDir, clientModsDir);
     }
 
     @Override
@@ -62,7 +62,6 @@ public class ServerSidedPackHandler extends SidedPackHandler {
 
     @Override
     protected List<IModFile> processModListClientOnly(List<IModFile> scannedMods) {
-        System.out.println("Process Mod List Client Only with " + scannedMods+ ", " + serverFileManager);
         serverFileManager.parseClientList(scannedMods);
         return Collections.emptyList();
     }

@@ -5,18 +5,25 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.*;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpUtil;
+import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.handler.ssl.SslHandshakeCompletionEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import sun.security.x509.X500Name;
 
-import javax.net.ssl.SSLException;
 import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import javax.net.ssl.SSLException;
 
 class RequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
     private final ServerSidedPackHandler serverSidedPackHandler;
@@ -41,7 +48,10 @@ class RequestHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
             buildReply(ctx, msg, HttpResponseStatus.OK, "application/json", s);
         } else if (msg.uri().startsWith("/files/")) {
             String fileName = LamdbaExceptionUtils.uncheck(()->URLDecoder.decode(msg.uri().substring(7), StandardCharsets.UTF_8.name()));
-            byte[] file = serverSidedPackHandler.getFileManager().findFile(fileName);
+
+            boolean client = msg.headers().get("X-Mod-Type", "common").equals("client");
+
+            byte[] file = serverSidedPackHandler.getFileManager().findFile(fileName, client);
             if (file == null) {
                 LOGGER.debug("Requested file {} not found", fileName);
                 build404(ctx, msg);

@@ -11,15 +11,17 @@ import java.util.List;
 
 public abstract class SidedPackHandler {
     private final Path serverModsDir;
+    private final Path clientModsDir;
     private final FileConfig packConfig;
     private boolean isValid;
 
-    protected SidedPackHandler(final Path serverModsDir) {
+    protected SidedPackHandler(final Path serverModsDir, Path clientModsDir) {
         this.serverModsDir = serverModsDir;
         this.packConfig = FileConfig
                 .builder(serverModsDir.resolve("serverpacklocator.toml"))
                 .onFileNotFound(this::handleMissing)
                 .build();
+        this.clientModsDir = clientModsDir;
         packConfig.load();
         packConfig.close();
         this.isValid = validateConfig();
@@ -36,6 +38,10 @@ public abstract class SidedPackHandler {
 
     public Path getServerModsDir() {
         return serverModsDir;
+    }
+
+    public Path getClientModsDir() {
+        return clientModsDir;
     }
 
     protected boolean isValid() {

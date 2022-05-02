@@ -1,6 +1,7 @@
 package cpw.mods.forge.serverpacklocator.server;
 
 import cpw.mods.forge.serverpacklocator.ServerManifest;
+import cpw.mods.forge.serverpacklocator.ServerManifest.ModFileData;
 import cpw.mods.forge.serverpacklocator.ServerManifest.OverrideFile;
 import cpw.mods.modlauncher.api.LamdbaExceptionUtils;
 import net.minecraftforge.forgespi.language.IModFileInfo;
@@ -30,14 +31,16 @@ public class ServerFileManager {
     private static final Logger LOGGER = LogManager.getLogger();
     private static Map<IModFile, IModFileInfo> infos;
     private ServerManifest manifest;
-    private final Path modsDir;
+    private final Path commonDir;
+    private final Path clientDir;
     private List<IModFile> modList;
     private List<IModFile> clientModList;
     private final Path manifestFile;
 
     ServerFileManager(ServerSidedPackHandler packHandler) {
-        modsDir = packHandler.getServerModsDir();
-        manifestFile = modsDir.resolve("servermanifest.json");
+        commonDir = packHandler.getServerModsDir();
+        clientDir = packHandler.getClientModsDir();
+        manifestFile = commonDir.resolve("servermanifest.json");
     }
 
     private static String getForgeVersion()
@@ -54,13 +57,15 @@ public class ServerFileManager {
         return manifest.toJson();
     }
 
-    byte[] findFile(final String fileName) {
+    byte[] findFile(final String fileName, boolean client) {
         try {
             // Check for a mod
-            Path modPath = modsDir.resolve(fileName);
+            Path target = client ? clientDir : commonDir;
+            Path modPath = target.resolve(fileName);
             if (!modPath.toFile().exists()) {
-                modPath = modsDir.resolve("overrides/" + fileName);
+                modPath = target.resolve("overrides/" + fileName);
             }
+            LOGGER.info("Attempting to read {}", modPath);
             return Files.readAllBytes(modPath);
         } catch (IOException e) {
             LOGGER.warn("Failed to read file {}", fileName);
@@ -139,8 +144,11 @@ public class ServerFileManager {
         // Add overrides
         manifest.addOverride(getOverrides());
 
-        manifest.setClientFiles(clientModList.stream().map(ServerManifest.ModFileData::new).collect(
-            Collectors.toList()));
+        manifest.setClientFiles(clientModList.stream().map(mod -> {
+            ModFileData mfd = new ServerManifest.ModFileData(mod);
+            mfd.setClient(true);
+            return mfd;
+        }).collect(Collectors.toList()));
 
         this.manifest = manifest;
         this.manifest.save(this.manifestFile);
@@ -168,7 +176,7 @@ public class ServerFileManager {
     }
 
     private List<OverrideFile> getOverrides() {
-        File overrideDir = modsDir.resolve("overrides").toFile();
+        File overrideDir = commonDir.resolve("overrides").toFile();
         String prefix = overrideDir.getAbsolutePath();
         try {
             return Files.walk(overrideDir.toPath()).filter(p -> p.toFile().isFile())
