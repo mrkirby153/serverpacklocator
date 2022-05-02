@@ -52,6 +52,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
@@ -71,6 +72,11 @@ public class SimpleHttpClient {
         "cpw:override");
     private static final AttributeKey<MessageHandler> HANDLER = AttributeKey.valueOf(
         "cpw:msghandler");
+
+    private static final Pattern[] ignoredPatterns = new Pattern[]{
+        Pattern.compile("(default)?config/.*-client.toml"),
+    };
+
     private final Path outputDir;
     private ServerManifest serverManifest;
     private Iterator<ServerManifest.ModFileData> fileDownloaderIterator;
@@ -81,6 +87,8 @@ public class SimpleHttpClient {
     private Channel downloadChannel;
     private final Future<Boolean> downloadJob;
     private boolean completedManifest;
+
+    private final ExecutorService tpe = Executors.newSingleThreadExecutor();
 
     public SimpleHttpClient(final ClientSidedPackHandler packHandler) {
         try {
@@ -241,17 +249,19 @@ public class SimpleHttpClient {
     }
 
     private void requestOverride(final ServerManifest.OverrideFile next) {
-        final String existingChecksum = FileChecksumValidator.computeChecksumFor(
-            gameDir.resolve(next.getPath()));
-        if (Objects.equals(next.getChecksum(), existingChecksum)) {
-            LOGGER.debug("Found existing file {} - skipping", next.getPath());
-            requestNextOverride();
-            return;
-        }
-        if (ignoredPaths.contains(next.getPath())) {
-            LOGGER.info("Skipping override for {} as it is ignored", next.getPath());
-            requestNextOverride();
-            return;
+        Path resolvedPath = gameDir.resolve(next.getPath());
+        final String existingChecksum = FileChecksumValidator.computeChecksumFor(resolvedPath);
+        boolean checksumMatches = Objects.equals(next.getChecksum(), existingChecksum);
+        boolean fileExists = resolvedPath.toFile().exists();
+
+        if(fileExists) {
+            if(!checksumMatches) {
+                if(shouldIgnore(next.getPath())) {
+                    LOGGER.info("Skipping override for {} as it is ignored", next.getPath());
+                    requestNextOverride();
+                    return;
+                }
+            }
         }
         Channel channel = downloadChannel;
         channel.attr(CURRENT_FILE).set(null);
@@ -312,9 +322,15 @@ public class SimpleHttpClient {
                 msg.content().readableBytes(), overrideFile.getPath());
             LaunchEnvironmentHandler.INSTANCE.addProgressMessage(
                 "Receiving file " + overrideFile.getPath());
-            try (OutputStream os = Files.newOutputStream(gameDir.resolve(overrideFile.getPath()))) {
+            Path targetPath = gameDir.resolve(overrideFile.getPath());
+            File f = targetPath.toFile();
+            File parentDir = f.getParentFile();
+            parentDir.mkdirs();
+            LOGGER.error("Could not make parent directories, this will probably not work");
+            try (OutputStream os = Files.newOutputStream(targetPath)) {
                 msg.content().readBytes(os, msg.content().readableBytes());
             } catch (IOException e) {
+                LOGGER.error("Error downloading file: {}", f.getAbsolutePath(), e);
                 e.printStackTrace();
             }
         } else {
@@ -326,8 +342,8 @@ public class SimpleHttpClient {
     private void requestNextOverride() {
         Iterator<ServerManifest.OverrideFile> overrideIterator = overrideFileIterator;
         if (overrideIterator != null && overrideIterator.hasNext()) {
-            // Request override
-            requestOverride(overrideIterator.next());
+            // Request override. This needs to reset the stack to prevent us from blowing up
+            tpe.submit(() -> requestOverride(overrideIterator.next()));
         } else {
             LOGGER.debug("Finished downloading closing channel");
             this.completedManifest = true;
@@ -415,5 +431,17 @@ public class SimpleHttpClient {
             hostname);
         LaunchEnvironmentHandler.INSTANCE.addProgressMessage(
             "CERTIFICATE PROBLEM: the remote host does not match it's name");
+    }
+
+    private boolean shouldIgnore(String path) {
+        for (Pattern p : ignoredPatterns) {
+            if (p.matcher(path).find()) {
+                return true;
+            }
+        }
+        if (ignoredPaths.contains(path)) {
+            return true;
+        }
+        return false;
     }
 }
