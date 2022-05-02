@@ -44,6 +44,8 @@ public abstract class SidedPackHandler {
 
     protected abstract List<IModFile> processModList(final List<IModFile> scannedMods);
 
+    protected abstract List<IModFile> processModListClientOnly(final List<IModFile> scannedMods);
+
     public abstract void initialize(final IModLocator dirLocator);
 
     protected abstract boolean waitForDownload();

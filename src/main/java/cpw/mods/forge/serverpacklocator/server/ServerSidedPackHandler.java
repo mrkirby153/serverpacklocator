@@ -10,10 +10,10 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.function.Predicate;
 
 public class ServerSidedPackHandler extends SidedPackHandler {
     private static final Logger LOGGER = LogManager.getLogger();
@@ -55,8 +55,16 @@ public class ServerSidedPackHandler extends SidedPackHandler {
 
     @Override
     protected List<IModFile> processModList(List<IModFile> scannedMods) {
+        System.out.println("Process modlist common " + scannedMods);
         serverFileManager.parseModList(scannedMods);
         return serverFileManager.getModList();
+    }
+
+    @Override
+    protected List<IModFile> processModListClientOnly(List<IModFile> scannedMods) {
+        System.out.println("Process Mod List Client Only with " + scannedMods+ ", " + serverFileManager);
+        serverFileManager.parseClientList(scannedMods);
+        return Collections.emptyList();
     }
 
     @Override

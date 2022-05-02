@@ -24,6 +24,8 @@ public class ServerManifest {
     private String forgeVersion;
     private List<ModFileData> files = new ArrayList<>();
 
+    private List<ModFileData> clientFiles = new ArrayList<>();
+
     private List<OverrideFile> overrides = new ArrayList<>();
 
     public static ServerManifest loadFromString(final String json) {
@@ -44,6 +46,14 @@ public class ServerManifest {
 
     public void setFiles(final List<ModFileData> files) {
         this.files = files;
+    }
+
+    public void setClientFiles(final List<ModFileData> files) {
+        this.clientFiles = files;
+    }
+
+    public List<ModFileData> getClientFiles() {
+        return clientFiles;
     }
 
     public List<OverrideFile> getOverrides() {

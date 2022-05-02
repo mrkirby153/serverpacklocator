@@ -72,6 +72,14 @@ public class ClientSidedPackHandler extends SidedPackHandler {
     }
 
     @Override
+    protected List<IModFile> processModListClientOnly(List<IModFile> scannedMods) {
+        final Set<String> manifestFileList = clientDownloader.getManifest().getClientFiles().stream().map(ServerManifest.ModFileData::getFileName).collect(
+            Collectors.toSet());
+        return scannedMods.stream().filter(f -> manifestFileList.contains(f.getFileName())).collect(
+            Collectors.toList());
+    }
+
+    @Override
     protected boolean waitForDownload() {
         if (!isValid()) return false;
 

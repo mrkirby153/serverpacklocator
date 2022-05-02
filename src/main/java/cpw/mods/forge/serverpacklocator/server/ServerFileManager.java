@@ -32,6 +32,7 @@ public class ServerFileManager {
     private ServerManifest manifest;
     private final Path modsDir;
     private List<IModFile> modList;
+    private List<IModFile> clientModList;
     private final Path manifestFile;
 
     ServerFileManager(ServerSidedPackHandler packHandler) {
@@ -138,6 +139,9 @@ public class ServerFileManager {
         // Add overrides
         manifest.addOverride(getOverrides());
 
+        manifest.setClientFiles(clientModList.stream().map(ServerManifest.ModFileData::new).collect(
+            Collectors.toList()));
+
         this.manifest = manifest;
         this.manifest.save(this.manifestFile);
         this.modList = Stream.concat(nonModFileData.stream(), modFileDataList.stream())
@@ -178,5 +182,9 @@ public class ServerFileManager {
             LOGGER.error("Could not walk overrides directory", e);
             return Collections.emptyList();
         }
+    }
+
+    public void parseClientList(List<IModFile> scannedMods) {
+        this.clientModList = scannedMods;
     }
 }
